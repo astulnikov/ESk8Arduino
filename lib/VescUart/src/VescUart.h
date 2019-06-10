@@ -37,20 +37,20 @@ class VescUart
 		VescUart(void);
 
 		/** Variabel to hold measurements returned from VESC */
-		dataPackage data; 
+		dataPackage data;
 
 		/** Variabel to hold nunchuck values */
-		nunchuckPackage nunchuck; 
+		nunchuckPackage nunchuck;
 
 		/**
 		 * @brief      Set the serial port for uart communication
-		 * @param      port  - Reference to Serial port (pointer) 
+		 * @param      port  - Reference to Serial port (pointer)
 		 */
 		void setSerialPort(HardwareSerial* port);
 
 		/**
 		 * @brief      Set the serial port for debugging
-		 * @param      port  - Reference to Serial port (pointer) 
+		 * @param      port  - Reference to Serial port (pointer)
 		 */
 		void setDebugPort(Stream* port);
 
@@ -73,10 +73,22 @@ class VescUart
 		void setCurrent(float current);
 
 		/**
+		 * @brief      Set the current to drive the motor
+		 * @param      current  - The current to apply
+		 */
+		void setCurrent(float current, int motorId);
+
+		/**
 		 * @brief      Set the current to brake the motor
 		 * @param      brakeCurrent  - The current to apply
 		 */
 		void setBrakeCurrent(float brakeCurrent);
+
+		/**
+		 * @brief      Set the current to brake the motor
+		 * @param      brakeCurrent  - The current to apply
+		 */
+		void setBrakeCurrent(float brakeCurrent, int motorId);
 
 		/**
 		 * @brief      Set the rpm of the motor
@@ -85,24 +97,27 @@ class VescUart
 		void setRPM(float rpm);
 
 		/**
+		 * @brief      Set the rpm of the motor
+		 * @param      rpm  - The desired RPM (actually eRPM = RPM * poles)
+		 */
+		void setRPM(float rpm, int motorId);
+
+		/**
 		 * @brief      Set the duty of the motor
 		 * @param      duty  - The desired duty (0.0-1.0)
 		 */
 		void setDuty(float duty);
 
 		/**
+		 * @brief      Set the duty of the motor
+		 * @param      duty  - The desired duty (0.0-1.0)
+		 */
+		void setDuty(float duty, int motorId);
+
+		/**
 		 * @brief      Help Function to print struct dataPackage over Serial for Debug
 		 */
 		void printVescValues(void);
-
-	private: 
-
-		/** Variabel to hold the reference to the Serial object to use for UART */
-		HardwareSerial* serialPort = NULL;
-
-		/** Variabel to hold the reference to the Serial object to use for debugging. 
-		  * Uses the class Stream instead of HarwareSerial */
-		Stream* debugPort = NULL;
 
 		/**
 		 * @brief      Packs the payload and sends it over Serial
@@ -112,6 +127,15 @@ class VescUart
 		 * @return     The number of bytes send
 		 */
 		int packSendPayload(uint8_t * payload, int lenPay);
+
+	private:
+
+		/** Variabel to hold the reference to the Serial object to use for UART */
+		HardwareSerial* serialPort = NULL;
+
+		/** Variabel to hold the reference to the Serial object to use for debugging.
+		  * Uses the class Stream instead of HarwareSerial */
+		Stream* debugPort = NULL;
 
 		/**
 		 * @brief      Receives the message over Serial
