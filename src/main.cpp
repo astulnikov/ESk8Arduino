@@ -3,18 +3,33 @@
 #include <SoftwareSerial.h>
 #include <Servo.h>
 
+const float WHEEL_SIZE = 0.09;
+
+const byte CHECK_CODE = 'c';
+const byte END_LINE_CODE = 'l';
+
+const byte RUN_STOP_CODE = 'S';
+const byte RUN_FORWARD_CODE = 'F';
+const byte RUN_BACKWARD_CODE = 'B';
+const byte TURN_TO_ANGLE_CODE = 'T';
+
+const byte SPEED_METRIC_CODE = 'S';
+const byte COMPASS_METRIC_CODE = 'C';
+const byte FRONT_SCANNER_METRIC_CODE = 'F';
+const byte REAR_DISTANCE_METRIC_CODE = 'R';
+
 const int LEFT_MOTOR_ID = 42;
+const int MAX_RPM = 20000;
 
 int fsrRearPin = 1;
 int fsrPin = 0;
 int LEDpin = 11;
 int rearLEDpin = 10;
 
-int maxPressure = 0;
-int refPressure = 0;
+int currentForward = 0;
+int currentBackward = 0;
 
-int currentPowerForward = 0;
-int currentPowerBackward = 0;
+int currentRpm = 0;
 
 VescUart vesc;
 SoftwareSerial comSerial(2, 3); // RX, TX
@@ -38,21 +53,28 @@ void releaseMotors(){
 }
 
 void driveForward(int power){
-  comSerial.print("Power Forward = ");
-  comSerial.println(power);
 
-  int ledBrightness = map(power, 0, 100, 0, 255);
-  analogWrite(LEDpin, ledBrightness);
-  analogWrite(rearLEDpin, 0);
+  if(power == 0){
+    analogWrite(rearLEDpin, 255);
+    analogWrite(LEDpin, 255);
+  } else {
+    int ledBrightness = map(power, 0, 100, 0, 255);
+    analogWrite(LEDpin, ledBrightness);
+    analogWrite(rearLEDpin, 0);
+  }
 
-  power = power / 4; // Reduce the maximum power
+  // int rpmRate = currentRpm / MAX_RPM * 100;
+  // if(rpmRate < power){
+  //   power = rpmRate + (power - rpmRate) / 4;
+  // }
+
+  power = min(power, 50); // Reduce the maximum power
+
   vesc.setDuty(power / 100.0);
   vesc.setDuty(power / 100.0, LEFT_MOTOR_ID);
 }
 
 void driveBackward(int power){ // Currently brakes
-  comSerial.print("Power Backward = ");
-  comSerial.println(power);
 
   int ledBrightness = map(power, 0, 100, 0, 255);
   analogWrite(rearLEDpin, ledBrightness);
@@ -72,12 +94,31 @@ void brake(){
   vesc.setDuty(0, LEFT_MOTOR_ID);
 }
 
+void sendFloatAsByteArray(float value){
+  typedef union{
+    float number;
+    uint8_t bytes[sizeof value];
+  } FLOATUNION_t;
+
+  FLOATUNION_t floatUnion;
+  floatUnion.number = value;
+  comSerial.write(floatUnion.bytes, sizeof(floatUnion.bytes));
+}
+
 void readVESC(){
   if (vesc.getVescValues() ) {
-    comSerial.println(vesc.data.rpm);
-    comSerial.println(vesc.data.inpVoltage);
-    comSerial.println(vesc.data.ampHours);
-    comSerial.println(vesc.data.tachometerAbs);
+    int rpm = vesc.data.rpm;
+    if(rpm != currentRpm){
+      float speed = rpm * WHEEL_SIZE * 3.14159265359 / 60;
+      comSerial.write(SPEED_METRIC_CODE);
+      sendFloatAsByteArray(speed);
+      comSerial.write("\n");
+    }
+    currentRpm = rpm;
+    // comSerial.println(vesc.data.rpm);
+    // comSerial.println(vesc.data.inpVoltage);
+    // comSerial.println(vesc.data.ampHours);
+    // comSerial.println(vesc.data.tachometerAbs);
   }
 }
 
@@ -88,77 +129,36 @@ void printPressure(int fsrFrontReading, int fsrRearReading){
   comSerial.println(fsrRearReading);
 }
 
-int filterPowerForward(int power) {
-  int resultingPower = 0;
-  if(currentPowerBackward == 0){
-    resultingPower = (currentPowerForward + power) / 2;
-  }
-  return resultingPower;
-}
-
-int filterPowerBackward(int power) {
-  int resultingPower = 0;
-  if(currentPowerForward == 0){
-    resultingPower = power;
-  }
-  return resultingPower;
+int filterValue(int current, int previous) {
+  int result = 0;
+  result = (current + previous) / 2;
+  return result;
 }
 
 void checkPressure(){
   int fsrFrontReading = analogRead(fsrPin);
   int fsrRearReading = analogRead(fsrRearPin);
 
-  int powerForward = 0;
-  int powerBackward = 0;
-
-  if(fsrFrontReading > 50){
-    if(fsrRearReading > 50){
+  if(fsrFrontReading > 20){
+    if(fsrRearReading > 20){
       // printPressure(fsrFrontReading, fsrRearReading);
 
-      if(fsrFrontReading > maxPressure){
-        maxPressure = fsrFrontReading;
-      }
+      fsrFrontReading = filterValue(fsrFrontReading, currentForward);
+      fsrRearReading = filterValue(fsrRearReading, currentBackward);
 
-      if(fsrRearReading > maxPressure){
-        maxPressure = fsrRearReading;
-      }
+      currentForward = fsrFrontReading;
+      currentBackward = fsrRearReading;
 
-      int equtyThreshold = 50;
-      if(abs(fsrFrontReading - fsrRearReading) < equtyThreshold){
-        // The pressure on both sensors is +- the same
-        refPressure = (fsrFrontReading + fsrRearReading) / 2; // take the middle as a ref. pressure
-      }
-
-      if(fsrFrontReading > refPressure || fsrRearReading > refPressure){
-        int frontPressure = map(fsrFrontReading, refPressure, maxPressure, 0, 100);
-        int backPressure = map(fsrRearReading, refPressure, maxPressure, 0, 100);
-
-        frontPressure = max(0, frontPressure);
-        backPressure = max(0, backPressure);
-
-        int pressureThreshold = 20; // diff to move forward
-        int backPressureThreshold = 30; // diff to apply breaks
-        int maxPressure = 70; // the diff above means full throttle
-
-        if(frontPressure - backPressure > pressureThreshold){
-          if(frontPressure > maxPressure){
-            powerForward = 100;
-          } else {
-            powerForward = map(frontPressure, pressureThreshold, 100, 20, 100);
-          }
-
-          powerForward = filterPowerForward(powerForward);
-          driveForward(powerForward);
-        } else if(backPressure - frontPressure > backPressureThreshold){
-          powerBackward = map(backPressure, backPressureThreshold, 100, 20, 100);
-
-          powerBackward = filterPowerBackward(powerBackward);
-          if(powerBackward = 0){
-            powerForward = filterPowerForward(0);
-          }
-          brake();
+      int minDiff = (fsrFrontReading + fsrRearReading) / 4;
+      int diff = abs(fsrFrontReading - fsrRearReading);
+      int startThreshold = 50;
+      if(diff > startThreshold){
+        if(fsrFrontReading > fsrRearReading){
+          int power = map(diff, startThreshold, 1023 - minDiff, 5, 100);
+          power =  min(power, 100);
+          driveForward(power);
         } else {
-          releaseMotors();
+          brake();
         }
       } else {
         releaseMotors();
@@ -169,13 +169,54 @@ void checkPressure(){
   } else{
     driveForward(0);
   }
-  currentPowerForward = powerForward;
-  currentPowerBackward = powerBackward;
+}
+
+union ArrayToInteger {
+  byte array[4];
+  uint32_t integer;
+};
+
+void chooseAction(byte data[]) {
+    if(data[0] != CHECK_CODE){
+      return;
+    }
+    
+    byte command = data[1];
+    switch (command) {
+      case RUN_FORWARD_CODE:
+      {
+        ArrayToInteger converter = {data[5], data[4], data[3], data[2]};
+        int speed = converter.integer;
+        driveForward(speed);
+      } break;
+      case RUN_BACKWARD_CODE:
+      {
+        driveBackward(80);
+      }  break;
+      case RUN_STOP_CODE:
+      {
+        releaseMotors();
+      }  break;
+      case TURN_TO_ANGLE_CODE: 
+        ArrayToInteger converter = {data[5], data[4], data[3], data[2]};
+        int angle = converter.integer;
+        break;
+    }
+}
+
+void readMessage() {
+  byte data[256];
+  comSerial.readBytesUntil(END_LINE_CODE, data, 256);  
+  chooseAction(data);
 }
 
 void loop() {
   readVESC();
-  checkPressure();
+  // checkPressure();
 
+  if (comSerial.available() > 0) {
+    readMessage();
+  } 
+  
   delay(50);
 }

@@ -1,0 +1,6 @@
+{
+    "terminal.integrated.env.osx": {
+        "PATH": "/Users/alex.stulnikau/.platformio/penv/bin:/Users/alex.stulnikau/.platformio/penv:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/alex.stulnikau/opt/gradle-4.8/bin:/Users/alex.stulnikau/Library/Android/sdk/platform-tools:/Users/alex.stulnikau/Library/Android/sdk/tools:/Users/alex.stulnikau/opt/apache-maven-3.5.3/bin",
+        "PLATFORMIO_CALLER": "vscode"
+    }
+}
